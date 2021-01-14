@@ -21,7 +21,9 @@ client.t3_banned_words = json.loads(os.getenv('T3'))
 #config parameters for this to run on the server
 client.this_guild = 279668907101388810
 client.admin_channel_id = 771103473701224480
+client.exempt_channels = [771103473701224480]
 client.moderator_roles = ['Moderation','Moderation Team Member']
+client.use_commands_roles = ['Moderation','Moderation Team Member', '👑 Mid Bosses 👑', '⚡ Final Bosses ⚡']
 
 #Utility Functions(To be taken into separate file)
 async def add_role(message, role_name):
@@ -110,20 +112,18 @@ async def banned_word_actions(message, msg, b_word, tier):
 
   await admin_channel.send(embed=embedVar)
 
-async def kick_user(message):
-  guild = message.guild
-  user = message.author
-  await guild.kick(user)
-
-async def ban_user(message):
-  guild = message.guild
-  user = message.author
-  await guild.ban(user)
+async def has_permission(message):
+  for role in message.author.roles:
+    if(role.name in client.use_commands_roles):
+      return True
+    else:
+      False
 
 #Discord Events
 @client.event
 async def on_ready():
   print('We have logged in as {0.user}'.format(client))
+  await client.change_presence(activity=discord.Game(name=" | DM with Mod Issues"))
 
 #On Message, where all the commands are
 @client.event
@@ -145,48 +145,51 @@ async def on_message(message):
     embedVar.add_field(name="User", value=message.author.mention, inline=False)
     await admin_channel.send(embed=embedVar)
 
-  #If a user posts a message with a T1 banned word, we delete the message
-  #send a DM that is harsh, and tag the moderation team.
-  if any(word in msg_lower for word in client.t1_banned_words):
-    b_word = await find_bad_word(msg_lower, client.t1_banned_words)
-    await message.author.send('I have detected the word "**{0}**" in your last message that we have deemed breaks our rules __in many contexts__. \n\n This message has been deleted and the moderators have been alerted; they will be reaching out to you for further action if necessary. Thanks for understanding!'.format(b_word))
-    await banned_word_actions(message, msg, b_word, 1)
-    await message.delete()
+  #Check if the message is being sent in a channel that we marked as exempt
+  if(message.channel.id not in client.exempt_channels):
+    #If a user posts a message with a T1 banned word, we delete the message
+    #send a DM that is harsh, and tag the moderation team.
+    if any(word in msg_lower for word in client.t1_banned_words):
+      b_word = await find_bad_word(msg_lower, client.t1_banned_words)
+      await message.author.send('I have detected the word "**{0}**" in your last message that we have deemed breaks our rules __in many contexts__. \n\n This message has been deleted and the moderators have been alerted; they will be reaching out to you for further action if necessary. Thanks for understanding! \n\n Please respond to this DM if you would like to forward an appeal to the moderators.'.format(b_word))
+      await banned_word_actions(message, msg, b_word, 1)
+      await message.delete()
 
-  #If a user posts a message with a T2 banned word, we delete the message
-  #send a DM that is not as harsh, and tag the moderation team.
-  if any(word in msg_lower for word in client.t2_banned_words):
-    b_word = await find_bad_word(msg_lower, client.t2_banned_words)
-    await message.author.send('I have detected the word "**{0}**" in your last message that does not belong in BG. \n\n This message has been deleted and the Moderators have been alerted incase any action needs to be taken. Thanks for Understanding!'.format(b_word))
-    await banned_word_actions(message, msg, b_word, 2)
-    await message.delete()
+    #If a user posts a message with a T2 banned word, we delete the message
+    #send a DM that is not as harsh, and tag the moderation team.
+    if any(word in msg_lower for word in client.t2_banned_words):
+      b_word = await find_bad_word(msg_lower, client.t2_banned_words)
+      await message.author.send('I have detected the word "**{0}**" in your last message that does not belong in BG. \n\n This message has been deleted and the Moderators have been alerted incase any action needs to be taken. Thanks for Understanding! \n\n Please respond to this DM if you would like to forward an appeal to the moderators.'.format(b_word))
+      await banned_word_actions(message, msg, b_word, 2)
+      await message.delete()
 
-  #If a user posts a message with a T3 banned word, We dont delete the message
-  if any(word in msg_lower for word in client.t3_banned_words):
-    b_word = await find_bad_word(msg_lower, client.t3_banned_words)
-    await banned_word_actions(message, msg, b_word, 3)
+    #If a user posts a message with a T3 banned word, We dont delete the message
+    if any(word in msg_lower for word in client.t3_banned_words):
+      b_word = await find_bad_word(msg_lower, client.t3_banned_words)
+      await banned_word_actions(message, msg, b_word, 3)
 
-  #allows the user to request a log for a given user
-  if(msg.startswith('=log')):
-    message_parts = message.content.split("=log ", 1)
-    if(len(message_parts) > 1 and len(message.mentions) > 0):
-      user = message.mentions[0].id
-      log = await get_user_log(user)
-      mention = message.mentions[0].mention
-      embed = await create_log_embed(log, mention)
-      await message.channel.send(embed=embed)
-    else:
-      await message.channel.send('Sorry, You need to provide a user whose log I should look up.')
 
-  #allows the user to clear a log for a given user
-  if(msg.startswith('=clearlog')):
-    message_parts = message.content.split("=clearlog ", 1)
-    if(len(message_parts) > 1 and len(message.mentions) > 0):
-      user = message.mentions[0].id
-      await clear_user_log(user)
-      await message.channel.send('I have cleared the log for {0}'.format(message.mentions[0].mention))
-    else:
-      await message.channel.send('Sorry, You need to provide a user whose log I should clear.')
+    #allows the user to request a log for a given user
+    if(msg.startswith('=log') and await has_permission(message)):
+      message_parts = message.content.split("=log ", 1)
+      if(len(message_parts) > 1 and len(message.mentions) > 0):
+        user = message.mentions[0].id
+        log = await get_user_log(user)
+        mention = message.mentions[0].mention
+        embed = await create_log_embed(log, mention)
+        await message.channel.send(embed=embed)
+      else:
+        await message.channel.send('Sorry, You need to provide a user whose log I should look up.')
+
+    #allows the user to clear a log for a given user
+    if(msg.startswith('=clearlog') and await has_permission(message)):
+      message_parts = message.content.split("=clearlog ", 1)
+      if(len(message_parts) > 1 and len(message.mentions) > 0):
+        user = message.mentions[0].id
+        await clear_user_log(user)
+        await message.channel.send('I have cleared the log for {0}'.format(message.mentions[0].mention))
+      else:
+        await message.channel.send('Sorry, You need to provide a user whose log I should clear.')
 
 #Run the threads
 keep_alive()
